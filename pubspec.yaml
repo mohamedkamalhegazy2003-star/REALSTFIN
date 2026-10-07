@@ -27,7 +27,7 @@ dependencies:
   extension_google_sign_in_as_googleapis_auth: ^2.0.12
   googleapis: ^13.2.0
   archive: ^3.6.1
-  file_picker: ^8.1.6
+  file_picker: ^8.2.0
   share_plus: ^10.1.4
   cupertino_icons: ^1.0.6
 
