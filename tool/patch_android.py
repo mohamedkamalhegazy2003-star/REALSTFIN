@@ -1,4 +1,4 @@
-"""يعدّل مجلد android المولَّد تلقائياً (flutter create) ليدعم:
+"""يعدّل مجلد android المولّد تلقائياً (flutter create) ليدعم:
 - صلاحيات الإشعارات POST_NOTIFICATIONS والبصمة
 - MainActivity من نوع FlutterFragmentActivity (مطلوب لـ local_auth)
 - Desugaring (مطلوب لـ flutter_local_notifications) و appcompat
@@ -9,6 +9,8 @@ import pathlib
 import re
 
 root = pathlib.Path('android')
+if not root.exists():
+    raise SystemExit('android folder not found. Run flutter create first.')
 
 # ---------- AndroidManifest ----------
 mf = root / 'app/src/main/AndroidManifest.xml'
@@ -33,12 +35,18 @@ for f in list(root.rglob('MainActivity.kt')) + list(root.rglob('MainActivity.jav
     m = re.search(r'package\s+([\w.]+)', src)
     pkg = m.group(1) if m else 'com.example.real_estate_app'
     if f.suffix == '.kt':
+        if 'FlutterFragmentActivity' in src:
+            print('MainActivity already patched:', f)
+            continue
         f.write_text(
             f'package {pkg}\n\nimport io.flutter.embedding.android.FlutterFragmentActivity\n\n'
             'class MainActivity : FlutterFragmentActivity()\n',
             encoding='utf-8',
         )
     else:
+        if 'FlutterFragmentActivity' in src:
+            print('MainActivity already patched:', f)
+            continue
         f.write_text(
             f'package {pkg};\n\nimport io.flutter.embedding.android.FlutterFragmentActivity;\n\n'
             'public class MainActivity extends FlutterFragmentActivity {\n}\n',
@@ -52,27 +60,31 @@ groovy = root / 'app/build.gradle'
 if kts.exists():
     g = kts
     txt = g.read_text(encoding='utf-8')
-    txt = re.sub(r'(compileOptions\s*\{)',
-                 lambda m: m.group(1) + '\n        isCoreLibraryDesugaringEnabled = true', txt, count=1)
+    if 'isCoreLibraryDesugaringEnabled = true' not in txt:
+        txt = re.sub(r'(compileOptions\s*\{)',
+                     lambda m: m.group(1) + '\n        isCoreLibraryDesugaringEnabled = true', txt, count=1)
     txt = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 24', txt)
-    txt += (
-        '\ndependencies {\n'
-        '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
-        '    implementation("androidx.appcompat:appcompat:1.7.0")\n'
-        '}\n'
-    )
+    if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' not in txt:
+        txt += (
+            '\ndependencies {\n'
+            '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+            '    implementation("androidx.appcompat:appcompat:1.7.0")\n'
+            '}\n'
+        )
 else:
     g = groovy
     txt = g.read_text(encoding='utf-8')
-    txt = re.sub(r'(compileOptions\s*\{)',
-                 lambda m: m.group(1) + '\n        coreLibraryDesugaringEnabled true', txt, count=1)
+    if 'coreLibraryDesugaringEnabled true' not in txt:
+        txt = re.sub(r'(compileOptions\s*\{)',
+                     lambda m: m.group(1) + '\n        coreLibraryDesugaringEnabled true', txt, count=1)
     txt = re.sub(r'minSdk(Version)?\s*=?\s*flutter\.minSdkVersion', 'minSdkVersion 24', txt)
-    txt += (
-        '\ndependencies {\n'
-        "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
-        "    implementation 'androidx.appcompat:appcompat:1.7.0'\n"
-        '}\n'
-    )
+    if 'coreLibraryDesugaring' not in txt:
+        txt += (
+            '\ndependencies {\n'
+            "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
+            "    implementation 'androidx.appcompat:appcompat:1.7.0'\n"
+            '}\n'
+        )
 g.write_text(txt, encoding='utf-8')
 print('gradle patched:', g)
 
@@ -87,32 +99,36 @@ for sx in root.glob('app/src/main/res/values*/styles.xml'):
 
 # ---------- توقيع ثابت (مطلوب لـ Google Sign-In: نفس SHA-1 في كل بناء) ----------
 g = kts if kts.exists() else groovy
-txt = g.read_text(encoding='utf-8')
-ks = 'rootProject.file("../tool/app.keystore")'
-if g == kts:
-    block = (
-        'signingConfigs {\n'
-        '        create("fixed") {\n'
-        f'            storeFile = {ks}\n'
-        '            storePassword = "realestate2026"\n'
-        '            keyAlias = "realestate"\n'
-        '            keyPassword = "realestate2026"\n'
-        '        }\n'
-        '    }\n    '
-    )
-    txt = txt.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("fixed")')
-else:
-    block = (
-        'signingConfigs {\n'
-        '        fixed {\n'
-        f'            storeFile {ks}\n'
-        "            storePassword 'realestate2026'\n"
-        "            keyAlias 'realestate'\n"
-        "            keyPassword 'realestate2026'\n"
-        '        }\n'
-        '    }\n    '
-    )
-    txt = txt.replace('signingConfigs.debug', 'signingConfigs.fixed')
-txt = re.sub(r'(\n\s*buildTypes\s*\{)', lambda m: '\n    ' + block + m.group(1).lstrip('\n').lstrip(), txt, count=1)
-g.write_text(txt, encoding='utf-8')
-print('signing patched:', g)
+if g.exists():
+    txt = g.read_text(encoding='utf-8')
+    ks = 'rootProject.file("../tool/app.keystore")'
+    if g == kts:
+        if 'create("fixed")' not in txt:
+            block = (
+                'signingConfigs {\n'
+                '        create("fixed") {\n'
+                f'            storeFile = {ks}\n'
+                '            storePassword = "realestate2026"\n'
+                '            keyAlias = "realestate"\n'
+                '            keyPassword = "realestate2026"\n'
+                '        }\n'
+                '    }\n'
+            )
+            txt = txt.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("fixed")')
+            txt = re.sub(r'(\n\s*buildTypes\s*\{)', lambda m: '\n    ' + block + m.group(1).lstrip('\n').lstrip(), txt, count=1)
+    else:
+        if 'fixed {' not in txt:
+            block = (
+                'signingConfigs {\n'
+                '        fixed {\n'
+                f'            storeFile {ks}\n'
+                "            storePassword 'realestate2026'\n"
+                "            keyAlias 'realestate'\n"
+                "            keyPassword 'realestate2026'\n"
+                '        }\n'
+                '    }\n'
+            )
+            txt = txt.replace('signingConfigs.debug', 'signingConfigs.fixed')
+            txt = re.sub(r'(\n\s*buildTypes\s*\{)', lambda m: '\n    ' + block + m.group(1).lstrip('\n').lstrip(), txt, count=1)
+    g.write_text(txt, encoding='utf-8')
+    print('signing patched:', g)
