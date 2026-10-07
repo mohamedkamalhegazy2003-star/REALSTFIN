@@ -25,16 +25,29 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Regenerate Android folder
+      - name: Ensure Android project exists
         run: |
-          rm -rf android ios
-          flutter create --platforms=android --org com.example --project-name real_estate_app .
+          if [ ! -d android ]; then
+            flutter create --platforms=android --org com.example --project-name real_estate_app .
+          fi
 
       - name: Patch Android
         run: python3 tool/patch_android.py
 
       - name: Get Flutter packages
         run: flutter pub get
+
+      - name: Clean Flutter
+        run: flutter clean
+
+      - name: Get Flutter packages again
+        run: flutter pub get
+
+      - name: Clean Gradle
+        run: |
+          cd android
+          ./gradlew clean
+          cd ..
 
       - name: Build APK
         run: flutter build apk --release
